@@ -1,36 +1,232 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Tickets — lightweight helpdesk
 
-## Getting Started
+A small internal support desk: users open tickets, agents self-assign them, everyone
+follows the discussion in a threaded comment view, and admins get a status dashboard.
 
-First, run the development server:
+Built with Next.js (App Router), Prisma, PostgreSQL, Auth.js and Tailwind.
+
+![CI](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml/badge.svg)
+
+![Tableau de bord](docs/dashboard.png)
+
+<details>
+<summary>Autres écrans</summary>
+
+**Liste des tickets, avec recherche et filtres**
+
+![Liste des tickets](docs/tickets.png)
+
+**Détail d'un ticket**
+
+![Détail d'un ticket](docs/ticket-detail.png)
+
+**Connexion**
+
+![Connexion](docs/login.png)
+
+</details>
+
+## Features
+
+- **Roles.** Reporters see and discuss only their own tickets; agents see and handle
+  everything; admins can additionally reassign other people's work.
+- **Ticket lifecycle.** Create with priority, self-assign, move through a fixed set of
+  legal status transitions, close.
+- **Threaded discussion**, refreshed every 10 seconds without a page reload.
+- **Filtered list** by status, "assigned to me" and "unassigned", plus a full-text
+  search over titles and descriptions. Filters and search live in the URL, so a view can
+  be bookmarked, shared and restored with the back button.
+- **Dashboard** with per-status counts, scoped to what you are allowed to see.
+
+## Demo accounts
+
+The seed data creates four users. Password for all of them: `demo1234`
+
+| Email                | Role  | Sees            | Can do                                              |
+| -------------------- | ----- | --------------- | --------------------------------------------------- |
+| `admin@tickets.dev`  | ADMIN | Every ticket    | Everything, plus unassigning other agents           |
+| `agent@tickets.dev`  | AGENT | Every ticket    | Self-assign, change status, comment anywhere        |
+| `claire@tickets.dev` | USER  | Her own tickets | Open tickets, comment on her own                    |
+| `samir@tickets.dev`  | USER  | His own tickets | Open tickets, comment on his own                    |
+
+There is deliberately **no public sign-up**: accounts come from the seed, so a shared
+demo cannot be filled with junk. Adding registration would be a `prisma.user.create`
+with a `bcrypt.hash` — the same call the seed already makes.
+
+## Quickstart
+
+Requires Node 22+ and Docker.
 
 ```bash
+npm install
+cp .env.example .env          # then set AUTH_SECRET (see below)
+npm run db:up                 # PostgreSQL 17 in Docker, on port 5433
+npm run db:migrate            # apply migrations
+npm run db:seed               # 4 accounts + 8 realistic tickets
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Prefer an empty board? `npm run db:clear` removes every ticket and keeps the four
+accounts, so you can still sign in. `npm run db:seed` brings the demo data back.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Open http://localhost:3000 and sign in with one of the demo accounts.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Generate an `AUTH_SECRET` with:
 
-## Learn More
+```bash
+openssl rand -base64 33
+```
 
-To learn more about Next.js, take a look at the following resources:
+> The database container listens on **5433**, not the default 5432, so it does not
+> collide with a PostgreSQL instance already running on the host.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Command              | What it does                                  |
+| -------------------- | --------------------------------------------- |
+| `npm run dev`        | Dev server                                    |
+| `npm run build`      | `prisma generate` + production build          |
+| `npm run typecheck`  | `tsc --noEmit`                                |
+| `npm run test:e2e`   | Playwright (starts the dev server on its own) |
+| `npm run db:up`      | Start PostgreSQL in Docker                    |
+| `npm run db:seed`    | Reset tickets and reload demo data            |
+| `npm run db:clear`   | Delete every ticket, keep the accounts        |
+| `npm run db:studio`  | Prisma Studio, to browse the database         |
+| `npm run db:reset`   | Drop, re-migrate and re-seed                  |
 
-## Deploy on Vercel
+## Data model
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Three tables, two real relations to `User` from `Ticket` (author and assignee),
+and comments hanging off tickets.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+User ──< Ticket (createdBy)      Ticket ──< Comment >── User (author)
+User ──< Ticket (assignedTo, nullable)
+```
+
+- `Ticket.reference` is an auto-incrementing integer so tickets can be referred to
+  as `#42` in the UI, while ids stay opaque cuids.
+- Indexes on `Ticket.status` and `Ticket.assignedToId` back the dashboard counts and
+  the "assigned to me" filter; `Comment` is indexed on `(ticketId, createdAt)` because
+  the comment poll always reads a thread in chronological order.
+- `onDelete: SetNull` on the assignee means deleting an agent unassigns their tickets
+  rather than deleting them.
+
+## Design system
+
+Every colour in the app is a semantic token — `surface`, `content`, `border`, `accent` —
+defined once in `src/app/globals.css` and exposed to Tailwind through `@theme inline`.
+A component is written `bg-surface text-content`, never with a raw palette value, so the
+whole interface can be retuned from one block. Colours are declared in `oklch` so
+lightness stays perceptually even across hues.
+
+**The interface is light-only, by design.** `color-scheme: light` is declared on the root
+and echoed as a `<meta name="color-scheme">` through Next's `viewport` export, so the
+app — including native form controls and scrollbars — stays light on a machine set to
+dark mode, and paints light from the first frame rather than flashing dark UA styling.
+There is no `prefers-color-scheme` block and no `dark:` variant anywhere in the markup.
+
+Supporting pieces: `src/components/ui.tsx` (buttons with a built-in loading state,
+cards, fields, avatars, empty states), `src/components/icons.tsx` (a hand-rolled inline
+SVG set — a handful of icons does not justify an icon dependency),
+`src/components/skeleton.tsx`, and `src/components/ticket-row.tsx`, shared by the
+dashboard and the list so the two cannot drift apart.
+
+Navigation is a fixed sidebar on desktop and an off-canvas drawer below `lg`. The drawer
+is toggled with `display`, not a transform: a panel moved off-screen with `translate`
+stays focusable and reachable by screen readers, which would quietly expose the whole
+navigation to keyboard users on mobile.
+
+The app honours `prefers-reduced-motion` and gives every interactive element the same
+focus ring.
+
+## Architecture notes
+
+- **Authorisation lives in one module.** `src/lib/permissions.ts` holds the rules and,
+  crucially, exposes visibility as a Prisma `where` fragment that every ticket query
+  spreads — an unauthorised row is never loaded, rather than loaded and filtered out.
+  Server actions re-check permissions after re-reading the ticket through that same
+  scoped query, because form fields are user input.
+- **Legal status transitions are data**, not `if` statements: the detail page renders
+  exactly the buttons the server action will accept, so UI and rules cannot drift.
+- **Suspense boundaries sit inside the pages, not in a route-level `loading.tsx`.**
+  A `loading.tsx` under `(app)/` would wrap every child route, `/tickets/[id]` included.
+  Once Next begins streaming, the `200` headers are already on the wire, so `notFound()`
+  can still render the not-found UI but can no longer set a `404` status — which would
+  have silently broken the "a foreign ticket is indistinguishable from a missing one"
+  property. The authorisation spec asserts on the status code and caught it.
+
+- **Sessions are JWTs, not database rows.** The Credentials provider does not support
+  the database session strategy, and the JWT carries the role so authorisation checks
+  need no extra query.
+- **No proxy/middleware auth check.** Every protected page calls `auth()` itself. In
+  Next 16 `middleware` was renamed `proxy` and now defaults to the Node.js runtime, so
+  running the check there *would* work — but a proxy check only guards navigation, and
+  the authoritative check belongs next to the data access it protects. Keeping it in
+  the server component means a new route can never silently skip it.
+- **Prisma 7 uses a driver adapter.** The connection string lives in `prisma.config.ts`
+  and `src/lib/prisma.ts` passes a `PrismaPg` adapter to the client — `url` in
+  `schema.prisma` is no longer supported.
+- **The Prisma client is generated into `src/generated/`**, which is gitignored and
+  rebuilt by the `postinstall` script.
+- **Polling, not WebSockets.** New comments will be fetched every 10s. For a helpdesk
+  this is the right trade-off: no connection state, no scaling concerns.
+
+## Tests
+
+```bash
+npm run test:e2e
+```
+
+> The suite reseeds the database before it runs (`e2e/global-setup.ts`), so any
+> ticket you created by hand while clicking around is discarded. That is what makes
+> the run deterministic — assertions on dashboard counts depend on a known fixture.
+
+Twelve Playwright specs in four files:
+
+- `auth.spec.ts` — redirect when signed out, successful login, rejected password, sign-out.
+- `authorization.spec.ts` — a reporter sees only their own tickets, an agent sees all,
+  a foreign ticket returns 404 rather than 403 (so nobody can probe for existence), a
+  reporter is offered no agent actions, and dashboard counts are scoped per role.
+- `ticket-lifecycle.spec.ts` — the full path: login → create → assign → comment → close,
+  plus server-side validation rejecting a too-short description.
+- `polling.spec.ts` — two browser contexts at once: a comment written by an agent shows
+  up in the reporter's open page without a reload.
+
+The specs run in parallel, so each one either creates its own ticket or asserts against
+a user whose seeded data no other spec mutates — the suite passes repeatedly against a
+database the previous run already modified.
+
+Assertions on ticket status target `data-testid="status-badge"` rather than the visible
+text, because the actions panel renders buttons carrying those same labels; matching the
+button would let a navigation race ahead of the server action and pass for the wrong
+reason.
+
+## Roadmap
+
+- [x] Schema, migrations, seed data
+- [x] Credentials auth with roles, protected routes
+- [x] Ticket list with filters, create form, detail page
+- [x] Threaded comments with 10s polling
+- [x] Self-assign and guarded status transitions
+- [x] Playwright suite: auth, authorisation and the full lifecycle
+- [x] GitHub Actions CI
+- [ ] Deploy to Vercel + Neon
+- [ ] Email notification when a ticket is assigned
+- [ ] Full-text search across ticket titles and descriptions
+
+## Deploying
+
+The only thing that changes between local and production is `DATABASE_URL`.
+
+1. Create a database on [Neon](https://neon.tech) and copy the **pooled** connection string.
+2. Import the repository on Vercel.
+3. Set `DATABASE_URL`, `AUTH_SECRET` and `AUTH_URL` (your deployed URL) as environment variables.
+4. Run the migrations against Neon once: `DATABASE_URL="<neon-url>" npx prisma migrate deploy`
+5. Seed the demo data the same way: `DATABASE_URL="<neon-url>" npx prisma db seed`
+
+## Known issues
+
+`npm audit` reports 3 high advisories in `deepmerge-ts`, reached through
+`prisma` → `@prisma/config`. That is a devDependency used by the CLI only; it is not
+part of the deployed application. It clears when Prisma updates the dependency.
