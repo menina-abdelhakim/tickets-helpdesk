@@ -1,0 +1,82 @@
+// Tickets — lightweight helpdesk
+// Docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER  // can open tickets and comment on their own
+  AGENT // can self-assign any ticket and change status
+  ADMIN // agent rights + access to the dashboard
+}
+
+enum Status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+
+  createdTickets  Ticket[]  @relation("TicketCreatedBy")
+  assignedTickets Ticket[]  @relation("TicketAssignedTo")
+  comments        Comment[]
+}
+
+model Ticket {
+  id          String   @id @default(cuid())
+  reference   Int      @unique @default(autoincrement()) // human-friendly "#42"
+  title       String
+  description String
+  status      Status   @default(OPEN)
+  priority    Priority @default(MEDIUM)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  createdBy   User   @relation("TicketCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+
+  assignedTo   User?   @relation("TicketAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedToId String?
+
+  comments Comment[]
+
+  // Dashboard counts group by status; the list page filters by assignee.
+  @@index([status])
+  @@index([assignedToId])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  body      String
+  createdAt DateTime @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  authorId String
+
+  // The 10s poll fetches a ticket's comments in chronological order.
+  @@index([ticketId, createdAt])
+}
