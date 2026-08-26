@@ -104,6 +104,8 @@ openssl rand -base64 33
 | `npm run db:up`      | Start PostgreSQL in Docker                    |
 | `npm run db:seed`    | Reset tickets and reload demo data            |
 | `npm run db:clear`   | Delete every ticket, keep the accounts        |
+| `npm run db:seed:prod` | Seed the database in `.env.production.local` |
+| `npm run db:clear:prod` | Empty that same database                   |
 | `npm run db:studio`  | Prisma Studio, to browse the database         |
 | `npm run db:reset`   | Drop, re-migrate and re-seed                  |
 
@@ -306,12 +308,25 @@ left alone, so a local build never needs a reachable database.
 
 ### 3. Demo data
 
-A public demo with an empty dashboard shows nothing. Seed it once, from your machine,
-against the **direct** connection string:
+A public demo with an empty dashboard shows nothing. Seed it once from your machine.
+
+Create `.env.production.local` — it is gitignored — containing the **direct** Neon
+connection string (the one *without* `-pooler`):
+
+```
+DATABASE_URL="postgresql://…@ep-xxx.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+```
+
+Then:
 
 ```bash
-DATABASE_URL="<direct-neon-url>" npx prisma db seed
+npm run db:seed:prod     # loads that file, seeds production
+npm run db:clear:prod    # empties it again, keeping the accounts
 ```
+
+Keeping the URL in a gitignored file rather than typing it on the command line keeps it
+out of your shell history, and works in any shell — a prompt-based `read` silently
+yields an empty value whenever stdin is not a terminal.
 
 Sign in with `admin@tickets.dev` / `demo1234`, and put the deployment URL at the top of
 this README.

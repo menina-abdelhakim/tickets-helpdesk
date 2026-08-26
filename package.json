@@ -19,7 +19,9 @@
     "db:clear": "tsx --env-file=.env prisma/clear.ts",
     "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "test:unit": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "db:seed:prod": "tsx --env-file=.env.production.local prisma/seed.ts",
+    "db:clear:prod": "tsx --env-file=.env.production.local prisma/clear.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
