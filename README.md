@@ -5,7 +5,7 @@ follows the discussion in a threaded comment view, and admins get a status dashb
 
 Built with Next.js (App Router), Prisma, PostgreSQL, Auth.js and Tailwind.
 
-### ▶︎ [Live demo](https://tickets-helpdesk-brown.vercel.app) — `admin@tickets.dev` / `demo1234`
+### ▶︎ [Live demo](https://tickets-helpdesk.vercel.app) — `admin@tickets.dev` / `demo1234`
 
 [![CI](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml/badge.svg)](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml)
 ![Logic coverage](https://img.shields.io/badge/logic%20coverage-100%25-brightgreen)
