@@ -17,7 +17,9 @@
     "db:reset": "prisma migrate reset --force",
     "test:e2e": "playwright test",
     "db:clear": "tsx --env-file=.env prisma/clear.ts",
-    "vercel-build": "prisma generate && prisma migrate deploy && next build"
+    "vercel-build": "prisma generate && prisma migrate deploy && next build",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
@@ -38,12 +40,14 @@
     "@types/pg": "8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitest/coverage-v8": "4.1.11",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "prisma": "7.10.0",
     "tailwindcss": "^4",
     "tsx": "4.23.12",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.11"
   },
   "engines": {
     "node": ">=22"

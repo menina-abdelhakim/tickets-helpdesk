@@ -5,7 +5,11 @@ follows the discussion in a threaded comment view, and admins get a status dashb
 
 Built with Next.js (App Router), Prisma, PostgreSQL, Auth.js and Tailwind.
 
-![CI](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml/badge.svg)
+### ▶︎ [Live demo](https://tickets-helpdesk-brown.vercel.app) — `admin@tickets.dev` / `demo1234`
+
+[![CI](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml/badge.svg)](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml)
+![Logic coverage](https://img.shields.io/badge/logic%20coverage-100%25-brightgreen)
+![Tests](https://img.shields.io/badge/tests-21%20unit%20%2B%2012%20e2e-blue)
 
 ![Tableau de bord](docs/dashboard.png)
 
@@ -87,6 +91,8 @@ openssl rand -base64 33
 | `npm run dev`        | Dev server                                    |
 | `npm run build`      | `prisma generate` + production build          |
 | `npm run typecheck`  | `tsc --noEmit`                                |
+| `npm run test:unit`  | Vitest unit tests                             |
+| `npm run test:coverage` | Unit tests with a coverage report          |
 | `npm run test:e2e`   | Playwright (starts the dev server on its own) |
 | `npm run db:up`      | Start PostgreSQL in Docker                    |
 | `npm run db:seed`    | Reset tickets and reload demo data            |
@@ -174,8 +180,26 @@ focus ring.
 
 ## Tests
 
+Two layers, because they answer different questions.
+
+**Unit tests** (Vitest) cover the pure logic — authorisation rules and date formatting:
+
 ```bash
-npm run test:e2e
+npm run test:unit          # 21 tests
+npm run test:coverage      # with a coverage report
+```
+
+Coverage is **scoped to `src/lib/permissions.ts` and `src/lib/format.ts`, where it sits
+at 100%**, and the run fails below 90%. That scope is deliberate: instrumenting the React
+tree would inflate the figure with lines only a browser can exercise, and a coverage
+number you cannot defend in review is worth less than no number at all. The rules that
+decide who may read and change a ticket are exactly the code that deserves exhaustive,
+fast, dependency-free tests.
+
+**End-to-end tests** (Playwright) cover the flows a user actually performs:
+
+```bash
+npm run test:e2e           # 12 specs
 ```
 
 > The suite reseeds the database before it runs (`e2e/global-setup.ts`), so any
@@ -211,9 +235,15 @@ reason.
 - [x] Self-assign and guarded status transitions
 - [x] Playwright suite: auth, authorisation and the full lifecycle
 - [x] GitHub Actions CI
-- [ ] Deploy to Vercel + Neon
-- [ ] Email notification when a ticket is assigned
-- [ ] Full-text search across ticket titles and descriptions
+- [x] Full-text search across titles and descriptions
+- [x] Unit tests with enforced coverage thresholds
+- [x] Deployed to Vercel + Neon
+- [ ] Attachments on tickets and comments
+- [ ] Email notification when a ticket is assigned or answered
+- [ ] Ticket history (who changed what, and when)
+- [ ] Saved views and sortable columns
+- [ ] SLA indicator: time since last agent reply
+- [ ] Rate limiting on ticket creation
 
 ## Deploying
 

@@ -43,7 +43,7 @@ export default async function TicketPage({ params }: PageProps<'/tickets/[id]'>)
           <StatusBadge status={ticket.status} />
           <PriorityBadge priority={ticket.priority} />
         </div>
-        <h1 className="text-xl font-semibold tracking-tight text-content sm:text-2xl">
+        <h1 className="max-w-4xl text-xl font-semibold tracking-tight text-content sm:text-2xl">
           {ticket.title}
         </h1>
         <p className="text-sm text-content-muted">
@@ -52,10 +52,12 @@ export default async function TicketPage({ params }: PageProps<'/tickets/[id]'>)
         </p>
       </header>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem] xl:gap-8">
         <div className="space-y-6">
-          <Card className="p-5">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-content">
+          <Card className="p-5 sm:p-6">
+            {/* Capped: a line of prose stops being readable past ~75 characters,
+                however wide the viewport gets. */}
+            <p className="max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-content">
               {ticket.description}
             </p>
           </Card>

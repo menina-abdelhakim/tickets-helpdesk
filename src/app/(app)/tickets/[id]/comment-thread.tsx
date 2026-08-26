@@ -127,7 +127,7 @@ export function CommentThread({
                     {date.toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })}
                   </time>
                 </div>
-                <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-content">
+                <p className="mt-1.5 max-w-[68ch] whitespace-pre-wrap text-sm leading-relaxed text-content">
                   {comment.body}
                 </p>
               </div>

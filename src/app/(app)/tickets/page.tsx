@@ -2,7 +2,7 @@ import Link from 'next/link'
 import type { Status } from '@/generated/prisma/enums'
 import { STATUS_LABELS_PLURAL } from '@/components/badges'
 import { PlusIcon, SearchIcon } from '@/components/icons'
-import { TicketRow } from '@/components/ticket-row'
+import { TicketListHeader, TicketRow } from '@/components/ticket-row'
 import { Button, Card, EmptyState, PageHeader } from '@/components/ui'
 import { isStaff } from '@/lib/permissions'
 import { requireUser } from '@/lib/session'
@@ -144,7 +144,7 @@ export default async function TicketsPage({ searchParams }: PageProps<'/tickets'
         />
       ) : (
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-5">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5 sm:px-5 lg:hidden">
             <p className="text-xs font-medium uppercase tracking-wider text-content-subtle">
               {tickets.length} ticket{tickets.length > 1 ? 's' : ''}
               {query && <span className="normal-case"> pour « {query} »</span>}
@@ -155,6 +155,7 @@ export default async function TicketsPage({ searchParams }: PageProps<'/tickets'
               </Link>
             )}
           </div>
+          <TicketListHeader />
           <ul data-testid="ticket-list" className="divide-y divide-border">
             {tickets.map((ticket) => (
               <TicketRow key={ticket.id} ticket={ticket} />
