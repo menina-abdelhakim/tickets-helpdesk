@@ -217,13 +217,57 @@ reason.
 
 ## Deploying
 
-The only thing that changes between local and production is `DATABASE_URL`.
+Vercel for the app, Neon for the database. The only thing that differs from local
+development is the connection string.
 
-1. Create a database on [Neon](https://neon.tech) and copy the **pooled** connection string.
-2. Import the repository on Vercel.
-3. Set `DATABASE_URL`, `AUTH_SECRET` and `AUTH_URL` (your deployed URL) as environment variables.
-4. Run the migrations against Neon once: `DATABASE_URL="<neon-url>" npx prisma migrate deploy`
-5. Seed the demo data the same way: `DATABASE_URL="<neon-url>" npx prisma db seed`
+### 1. Database
+
+Create a project on [Neon](https://neon.tech) and copy **both** connection strings from
+the dashboard:
+
+- the **pooled** one (host contains `-pooler`) → this becomes `DATABASE_URL`
+- the **direct** one (no `-pooler`) → this becomes `DIRECT_URL`
+
+The distinction matters. The application runs on serverless functions and needs the
+pooler, or a burst of cold starts exhausts the connection limit. Migrations must *not*
+go through the pooler: PgBouncer in transaction mode cannot hold the session and
+advisory locks `prisma migrate deploy` takes. `prisma.config.ts` reads `DIRECT_URL`
+when it is set and falls back to `DATABASE_URL` locally, where one Postgres does both.
+
+### 2. Vercel
+
+Import the repository on [Vercel](https://vercel.com/new). Set three environment
+variables for **Production** (and Preview, if you want preview deployments to work):
+
+| Variable        | Value                                              |
+| --------------- | -------------------------------------------------- |
+| `DATABASE_URL`  | Neon **pooled** connection string                   |
+| `DIRECT_URL`    | Neon **direct** connection string                   |
+| `AUTH_SECRET`   | `openssl rand -base64 33` — a fresh one, not the local value |
+
+Do **not** set `AUTH_URL`. Auth.js infers the deployment URL on Vercel and trusts the
+host automatically; pointing it at `localhost` would break every redirect after sign-in.
+
+Vercel runs the `vercel-build` script when it exists, so `prisma generate`,
+`prisma migrate deploy` and `next build` all run on deploy. The plain `build` script is
+left alone, so a local build never needs a reachable database.
+
+### 3. Demo data
+
+A public demo with an empty dashboard shows nothing. Seed it once, from your machine,
+against the **direct** connection string:
+
+```bash
+DATABASE_URL="<direct-neon-url>" npx prisma db seed
+```
+
+Sign in with `admin@tickets.dev` / `demo1234`, and put the deployment URL at the top of
+this README.
+
+### Redeploying
+
+Push to `main`. Migrations apply automatically; the seed does not re-run, so demo data
+is only reset when you run the command above again.
 
 ## Known issues
 

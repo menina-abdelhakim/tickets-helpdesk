@@ -16,7 +16,8 @@
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "test:e2e": "playwright test",
-    "db:clear": "tsx --env-file=.env prisma/clear.ts"
+    "db:clear": "tsx --env-file=.env prisma/clear.ts",
+    "vercel-build": "prisma generate && prisma migrate deploy && next build"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
@@ -43,5 +44,8 @@
     "tailwindcss": "^4",
     "tsx": "4.23.12",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
