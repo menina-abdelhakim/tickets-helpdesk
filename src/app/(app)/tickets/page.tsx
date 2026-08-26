@@ -6,7 +6,13 @@ import { TicketListHeader, TicketRow } from '@/components/ticket-row'
 import { Button, Card, EmptyState, PageHeader } from '@/components/ui'
 import { isStaff } from '@/lib/permissions'
 import { requireUser } from '@/lib/session'
-import { listTickets, type TicketFilters } from '@/lib/tickets'
+import {
+  isSortField,
+  listTickets,
+  type SortDirection,
+  type SortField,
+  type TicketFilters,
+} from '@/lib/tickets'
 
 const STATUSES: Status[] = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED']
 
@@ -40,11 +46,17 @@ export default async function TicketsPage({ searchParams }: PageProps<'/tickets'
 
   const statusParam = typeof params.status === 'string' ? params.status : undefined
   const query = typeof params.q === 'string' ? params.q : ''
+  const sortParam = typeof params.sort === 'string' ? params.sort : undefined
+  const sort: SortField = isSortField(sortParam) ? sortParam : 'activity'
+  const dir: SortDirection = params.dir === 'asc' ? 'asc' : 'desc'
+
   const filters: TicketFilters = {
     status: isStatus(statusParam) ? statusParam : undefined,
     mine: params.mine === '1',
     unassigned: params.unassigned === '1',
     q: query,
+    sort: sortParam && isSortField(sortParam) ? sort : undefined,
+    dir,
   }
 
   const tickets = await listTickets(user, filters)
@@ -53,6 +65,22 @@ export default async function TicketsPage({ searchParams }: PageProps<'/tickets'
   /** Keeps the active filter when the search form is submitted. */
   const withQuery = (href: string) =>
     query ? `${href}${href.includes('?') ? '&' : '?'}q=${encodeURIComponent(query)}` : href
+
+  /**
+   * Sorting keeps every other parameter, so a sorted view of a filtered search
+   * stays one shareable URL rather than resetting the page.
+   */
+  const hrefFor = (field: SortField) => {
+    const next = new URLSearchParams()
+    if (filters.status) next.set('status', filters.status)
+    if (filters.mine) next.set('mine', '1')
+    if (filters.unassigned) next.set('unassigned', '1')
+    if (query) next.set('q', query)
+    next.set('sort', field)
+    // Clicking the active column flips the direction; a new column starts descending.
+    next.set('dir', sort === field && dir === 'desc' ? 'asc' : 'desc')
+    return `/tickets?${next.toString()}`
+  }
 
   return (
     <div className="space-y-6">
@@ -155,7 +183,7 @@ export default async function TicketsPage({ searchParams }: PageProps<'/tickets'
               </Link>
             )}
           </div>
-          <TicketListHeader />
+          <TicketListHeader sort={sort} dir={dir} hrefFor={hrefFor} />
           <ul data-testid="ticket-list" className="divide-y divide-border">
             {tickets.map((ticket) => (
               <TicketRow key={ticket.id} ticket={ticket} />

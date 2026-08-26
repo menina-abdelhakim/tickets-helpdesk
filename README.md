@@ -9,7 +9,7 @@ Built with Next.js (App Router), Prisma, PostgreSQL, Auth.js and Tailwind.
 
 [![CI](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml/badge.svg)](https://github.com/menina-abdelhakim/tickets-helpdesk/actions/workflows/ci.yml)
 ![Logic coverage](https://img.shields.io/badge/logic%20coverage-100%25-brightgreen)
-![Tests](https://img.shields.io/badge/tests-21%20unit%20%2B%2012%20e2e-blue)
+![Tests](https://img.shields.io/badge/tests-38%20unit%20%2B%2020%20e2e-blue)
 
 ![Tableau de bord](docs/dashboard.png)
 
@@ -37,9 +37,16 @@ Built with Next.js (App Router), Prisma, PostgreSQL, Auth.js and Tailwind.
 - **Ticket lifecycle.** Create with priority, self-assign, move through a fixed set of
   legal status transitions, close.
 - **Threaded discussion**, refreshed every 10 seconds without a page reload.
-- **Filtered list** by status, "assigned to me" and "unassigned", plus a full-text
-  search over titles and descriptions. Filters and search live in the URL, so a view can
-  be bookmarked, shared and restored with the back button.
+- **Filtered, sorted, searchable list** — by status, "assigned to me", "unassigned",
+  sortable columns, and a Postgres full-text search that ignores accents and matches word
+  variants (`ecran` finds *Écran*, `licences` finds *Licence*). Every one of these lives
+  in the URL, so a view can be bookmarked, shared and restored with the back button.
+- **Audit trail.** Creation, assignment and status changes are recorded and interleaved
+  with the discussion on a single timeline, so a ticket can never change without leaving
+  a trace of who did it and when.
+- **SLA clock.** Each priority carries a response target; the clock restarts on the last
+  reply from support, and only late or nearly-late tickets are flagged.
+- **Rate-limited creation**, so a public demo cannot be filled in a loop.
 - **Dashboard** with per-status counts, scoped to what you are allowed to see.
 
 ## Demo accounts
@@ -155,6 +162,17 @@ focus ring.
   scoped query, because form fields are user input.
 - **Legal status transitions are data**, not `if` statements: the detail page renders
   exactly the buttons the server action will accept, so UI and rules cannot drift.
+- **Search is a generated `tsvector` column with a GIN index**, not a `LIKE`. Postgres
+  maintains it: a `STORED` generated column can never drift from the row it describes.
+  The title is weighted above the description, and an `IMMUTABLE` `unaccent` wrapper makes
+  matching accent-insensitive — necessary in French, where people type `ecran` for *écran*.
+  The raw query returns **ids only**, which are fed back into the normal Prisma query, so
+  visibility rules stay in one place instead of being restated in SQL.
+- **Audit entries are written in the same transaction as the change they describe**, so a
+  ticket can never move without a trace, and a trace can never describe a move that was
+  rolled back.
+- **Rate limiting counts rows in the database**, not entries in a process-local map: a
+  serverless function is recreated constantly, and an in-memory counter would reset with it.
 - **Suspense boundaries sit inside the pages, not in a route-level `loading.tsx`.**
   A `loading.tsx` under `(app)/` would wrap every child route, `/tickets/[id]` included.
   Once Next begins streaming, the `200` headers are already on the wire, so `notFound()`
@@ -185,12 +203,12 @@ Two layers, because they answer different questions.
 **Unit tests** (Vitest) cover the pure logic — authorisation rules and date formatting:
 
 ```bash
-npm run test:unit          # 21 tests
+npm run test:unit          # 38 tests
 npm run test:coverage      # with a coverage report
 ```
 
-Coverage is **scoped to `src/lib/permissions.ts` and `src/lib/format.ts`, where it sits
-at 100%**, and the run fails below 90%. That scope is deliberate: instrumenting the React
+Coverage is **scoped to the pure logic — authorisation, SLA, rate limiting, date and
+event formatting — where it sits at 100%**, and the run fails below 90%. That scope is deliberate: instrumenting the React
 tree would inflate the figure with lines only a browser can exercise, and a coverage
 number you cannot defend in review is worth less than no number at all. The rules that
 decide who may read and change a ticket are exactly the code that deserves exhaustive,
@@ -199,7 +217,7 @@ fast, dependency-free tests.
 **End-to-end tests** (Playwright) cover the flows a user actually performs:
 
 ```bash
-npm run test:e2e           # 12 specs
+npm run test:e2e           # 20 specs
 ```
 
 > The suite reseeds the database before it runs (`e2e/global-setup.ts`), so any
@@ -216,6 +234,9 @@ Twelve Playwright specs in four files:
   plus server-side validation rejecting a too-short description.
 - `polling.spec.ts` — two browser contexts at once: a comment written by an agent shows
   up in the reporter's open page without a reload.
+- `features.spec.ts` — the audit trail survives a reload, search ignores accents and
+  never widens what a reporter may see, sorting preserves the active filter, and a burst
+  of ticket creation is refused.
 
 The specs run in parallel, so each one either creates its own ticket or asserts against
 a user whose seeded data no other spec mutates — the suite passes repeatedly against a
@@ -238,12 +259,13 @@ reason.
 - [x] Full-text search across titles and descriptions
 - [x] Unit tests with enforced coverage thresholds
 - [x] Deployed to Vercel + Neon
-- [ ] Attachments on tickets and comments
-- [ ] Email notification when a ticket is assigned or answered
-- [ ] Ticket history (who changed what, and when)
-- [ ] Saved views and sortable columns
-- [ ] SLA indicator: time since last agent reply
-- [ ] Rate limiting on ticket creation
+- [x] Ticket history: who changed what, and when
+- [x] Sortable columns, with filters and sort kept in the URL
+- [x] SLA indicator based on the last reply from support
+- [x] Rate limiting on ticket creation
+- [x] Accent-insensitive Postgres full-text search
+- [ ] Attachments on tickets and comments — needs object storage
+- [ ] Email notification on assignment — needs a mail provider
 
 ## Deploying
 

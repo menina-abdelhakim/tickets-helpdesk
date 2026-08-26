@@ -144,13 +144,52 @@ async function main() {
     // activity on the ticket so the seeded history looks like real history.
     const lastActivity = comments.at(-1)?.createdAt ?? ticket.createdAt
 
+    // Rebuild a plausible audit trail, so the demo timeline is not empty and
+    // the recorded history matches the state the ticket ended up in.
+    const events = [
+      {
+        type: 'CREATED' as const,
+        actorId: ticket.createdById,
+        createdAt: ticket.createdAt,
+      },
+      ...(ticket.assignedToId
+        ? [
+            {
+              type: 'ASSIGNED' as const,
+              actorId: ticket.assignedToId,
+              targetUserId: ticket.assignedToId,
+              createdAt: new Date(ticket.createdAt.getTime() + 30 * 60_000),
+            },
+          ]
+        : []),
+      ...(ticket.status !== 'OPEN' && ticket.assignedToId
+        ? [
+            {
+              type: 'STATUS_CHANGED' as const,
+              actorId: ticket.assignedToId,
+              fromStatus: 'OPEN' as const,
+              toStatus: ticket.status,
+              createdAt: lastActivity,
+            },
+          ]
+        : []),
+    ]
+
     await prisma.ticket.create({
-      data: { ...ticket, updatedAt: lastActivity, comments: { create: comments } },
+      data: {
+        ...ticket,
+        updatedAt: lastActivity,
+        comments: { create: comments },
+        events: { create: events },
+      },
     })
   }
 
   const counts = await prisma.ticket.groupBy({ by: ['status'], _count: true })
-  console.log(`Seeded ${await prisma.user.count()} users and ${await prisma.ticket.count()} tickets`)
+  console.log(
+    `Seeded ${await prisma.user.count()} users, ${await prisma.ticket.count()} tickets ` +
+      `and ${await prisma.ticketEvent.count()} events`,
+  )
   console.log(counts.map((c) => `  ${c.status}: ${c._count}`).join('\n'))
   console.log(`\nDemo login — admin@tickets.dev / ${DEMO_PASSWORD}`)
 }

@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react'
+import { describeEvent, type WireEvent } from '@/components/event-line'
 import { SendIcon } from '@/components/icons'
 import { Avatar, Button } from '@/components/ui'
 import { addComment, type CommentFormState } from '../actions'
@@ -21,25 +22,72 @@ export type WireComment = {
 
 const POLL_INTERVAL_MS = 10_000
 
+type TimelineItem =
+  | { kind: 'comment'; at: number; comment: WireComment }
+  | { kind: 'event'; at: number; event: WireEvent }
+
+/** Comments and audit entries are one story; interleave them by time. */
+function buildTimeline(comments: WireComment[], events: WireEvent[]): TimelineItem[] {
+  return [
+    ...comments.map<TimelineItem>((comment) => ({
+      kind: 'comment',
+      at: new Date(comment.createdAt).getTime(),
+      comment,
+    })),
+    ...events.map<TimelineItem>((event) => ({
+      kind: 'event',
+      at: new Date(event.createdAt).getTime(),
+      event,
+    })),
+  ].sort((a, b) => {
+    if (a.at !== b.at) return a.at - b.at
+    // Same timestamp: the event caused the discussion, so it comes first.
+    // "X a ouvert le ticket" must never appear below the first reply.
+    if (a.kind === b.kind) return 0
+    return a.kind === 'event' ? -1 : 1
+  })
+}
+
 export function CommentThread({
   ticketId,
   currentUserId,
   initialComments,
+  initialEvents,
 }: {
   ticketId: string
   currentUserId: string
   initialComments: WireComment[]
+  initialEvents: WireEvent[]
 }) {
-  const [comments, setComments] = useState(initialComments)
+  const [data, setData] = useState({ comments: initialComments, events: initialEvents })
   const [draft, setDraft] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
+
+  /*
+   * A server action (assign, change status) revalidates the page, so the server
+   * sends fresher props — but `useState` ignores props after mount, and the
+   * timeline would sit stale until the next poll, up to ten seconds later.
+   *
+   * This is React's documented "adjust state when a prop changes" pattern:
+   * comparing during render and re-rendering immediately, rather than an effect
+   * that would paint the stale list first.
+   */
+  const serverSignature = `${initialComments.length}:${initialComments.at(-1)?.id ?? ''}:${initialEvents.length}:${initialEvents.at(-1)?.id ?? ''}`
+  const [seenSignature, setSeenSignature] = useState(serverSignature)
+
+  if (seenSignature !== serverSignature) {
+    setSeenSignature(serverSignature)
+    setData({ comments: initialComments, events: initialEvents })
+  }
+
+  const { comments, events } = data
 
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/tickets/${ticketId}/comments`, { cache: 'no-store' })
       if (!res.ok) return
-      const data = (await res.json()) as { comments: WireComment[] }
-      setComments(data.comments)
+      const fresh = (await res.json()) as { comments: WireComment[]; events: WireEvent[] }
+      setData({ comments: fresh.comments, events: fresh.events })
     } catch {
       // A failed poll is not worth surfacing: the next tick will retry.
     }
@@ -81,6 +129,8 @@ export function CommentThread({
     }
   }
 
+  const timeline = buildTimeline(comments, events)
+
   return (
     <section className="space-y-4">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-content">
@@ -94,13 +144,49 @@ export function CommentThread({
       </h2>
 
       <ul data-testid="comment-list" className="space-y-4">
-        {comments.map((comment, index) => {
+        {timeline.map((item, index) => {
+          const last = index === timeline.length - 1
+
+          if (item.kind === 'event') {
+            return (
+              <li key={`e-${item.event.id}`} className="relative flex gap-3">
+                {!last && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute left-[13px] top-7 bottom-[-1rem] w-px bg-border"
+                  />
+                )}
+                <span
+                  aria-hidden="true"
+                  className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full border border-border bg-surface-muted"
+                >
+                  <span className="size-1.5 rounded-full bg-content-subtle" />
+                </span>
+                <p
+                  data-testid="timeline-event"
+                  className="pt-1 text-xs text-content-muted"
+                >
+                  {describeEvent(item.event)}
+                  <time
+                    dateTime={item.event.createdAt}
+                    className="ml-2 text-content-subtle"
+                  >
+                    {new Date(item.event.createdAt).toLocaleString('fr-FR', {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })}
+                  </time>
+                </p>
+              </li>
+            )
+          }
+
+          const comment = item.comment
           const mine = comment.author.id === currentUserId
-          const last = index === comments.length - 1
           const date = new Date(comment.createdAt)
 
           return (
-            <li key={comment.id} className="relative flex gap-3">
+            <li key={`c-${comment.id}`} className="relative flex gap-3">
               {/* Timeline rail, stopping at the last entry. */}
               {!last && (
                 <span
@@ -135,7 +221,7 @@ export function CommentThread({
           )
         })}
 
-        {comments.length === 0 && (
+        {timeline.length === 0 && (
           <li className="rounded-xl border border-dashed border-border-strong px-6 py-10 text-center text-sm text-content-muted">
             Aucun message pour l’instant. Lancez la discussion ci-dessous.
           </li>

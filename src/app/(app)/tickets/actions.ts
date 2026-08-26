@@ -12,6 +12,11 @@ import {
   canTransition,
 } from '@/lib/permissions'
 import { prisma } from '@/lib/prisma'
+import {
+  exceedsTicketRateLimit,
+  rateLimitMessage,
+  rateLimitWindowStart,
+} from '@/lib/rate-limit'
 import { requireUser } from '@/lib/session'
 import { getTicket } from '@/lib/tickets'
 
@@ -43,9 +48,25 @@ export async function createTicket(_prev: FormState, formData: FormData): Promis
     return { error: parsed.error.issues[0].message }
   }
 
-  const ticket = await prisma.ticket.create({
-    data: { ...parsed.data, createdById: user.id },
-    select: { id: true },
+  // The demo is public: without this a single visitor can fill the board.
+  // The window is counted in the database, not in memory, so it survives cold
+  // starts and cannot be reset by opening a new connection.
+  const recent = await prisma.ticket.count({
+    where: { createdById: user.id, createdAt: { gte: rateLimitWindowStart() } },
+  })
+  if (exceedsTicketRateLimit(recent)) {
+    return { error: rateLimitMessage() }
+  }
+
+  const ticket = await prisma.$transaction(async (tx) => {
+    const created = await tx.ticket.create({
+      data: { ...parsed.data, createdById: user.id },
+      select: { id: true },
+    })
+    await tx.ticketEvent.create({
+      data: { ticketId: created.id, actorId: user.id, type: 'CREATED' },
+    })
+    return created
   })
 
   revalidatePath('/tickets')
@@ -97,7 +118,20 @@ export async function assignToMe(formData: FormData): Promise<void> {
   const ticket = await getTicket(user, ticketId)
   if (!ticket || !canSelfAssign(user)) return
 
-  await prisma.ticket.update({ where: { id: ticket.id }, data: { assignedToId: user.id } })
+  // Ticket change and audit entry share a transaction: a ticket must never
+  // move without leaving a trace, and a trace must never describe a move that
+  // did not happen.
+  await prisma.$transaction([
+    prisma.ticket.update({ where: { id: ticket.id }, data: { assignedToId: user.id } }),
+    prisma.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        actorId: user.id,
+        type: 'ASSIGNED',
+        targetUserId: user.id,
+      },
+    }),
+  ])
   revalidatePath(`/tickets/${ticket.id}`)
   revalidatePath('/tickets')
 }
@@ -112,7 +146,19 @@ export async function unassign(formData: FormData): Promise<void> {
   // An agent may drop a ticket they hold; only an admin may unassign someone else.
   if (ticket.assignedTo?.id !== user.id && !canAssignOthers(user)) return
 
-  await prisma.ticket.update({ where: { id: ticket.id }, data: { assignedToId: null } })
+  const previousAssignee = ticket.assignedTo?.id ?? null
+
+  await prisma.$transaction([
+    prisma.ticket.update({ where: { id: ticket.id }, data: { assignedToId: null } }),
+    prisma.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        actorId: user.id,
+        type: 'UNASSIGNED',
+        targetUserId: previousAssignee,
+      },
+    }),
+  ])
   revalidatePath(`/tickets/${ticket.id}`)
   revalidatePath('/tickets')
 }
@@ -138,10 +184,21 @@ export async function changeStatus(formData: FormData): Promise<void> {
   // POST must not be able to jump a ticket straight from CLOSED to RESOLVED.
   if (!canTransition(ticket.status, parsed.data.status)) return
 
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { status: parsed.data.status },
-  })
+  await prisma.$transaction([
+    prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { status: parsed.data.status },
+    }),
+    prisma.ticketEvent.create({
+      data: {
+        ticketId: ticket.id,
+        actorId: user.id,
+        type: 'STATUS_CHANGED',
+        fromStatus: ticket.status,
+        toStatus: parsed.data.status,
+      },
+    }),
+  ])
 
   revalidatePath(`/tickets/${ticket.id}`)
   revalidatePath('/tickets')

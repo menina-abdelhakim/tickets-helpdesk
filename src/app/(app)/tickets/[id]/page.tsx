@@ -1,11 +1,12 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { PriorityBadge, PRIORITY_LABELS, StatusBadge } from '@/components/badges'
+import { PriorityBadge, PRIORITY_LABELS, SlaBadge, StatusBadge } from '@/components/badges'
 import { ArrowLeftIcon } from '@/components/icons'
 import { Avatar, Card, CardHeader } from '@/components/ui'
 import { absoluteTime, relativeTime } from '@/lib/format'
 import { requireUser } from '@/lib/session'
-import { getTicket, listComments } from '@/lib/tickets'
+import { slaHoursRemaining, slaLevel } from '@/lib/sla'
+import { getTicket, lastStaffReplyAt, listComments, listEvents } from '@/lib/tickets'
 import { ActionsPanel } from './actions-panel'
 import { CommentThread } from './comment-thread'
 
@@ -25,7 +26,25 @@ export default async function TicketPage({ params }: PageProps<'/tickets/[id]'>)
   const ticket = await getTicket(user, id)
   if (!ticket) notFound()
 
-  const comments = await listComments(ticket.id)
+  const [comments, events, staffReplyAt] = await Promise.all([
+    listComments(ticket.id),
+    listEvents(ticket.id),
+    lastStaffReplyAt(ticket.id),
+  ])
+
+  const sla = {
+    level: slaLevel({
+      priority: ticket.priority,
+      status: ticket.status,
+      createdAt: ticket.createdAt,
+      lastStaffReplyAt: staffReplyAt,
+    }),
+    hoursRemaining: slaHoursRemaining({
+      priority: ticket.priority,
+      createdAt: ticket.createdAt,
+      lastStaffReplyAt: staffReplyAt,
+    }),
+  }
 
   return (
     <div className="space-y-6">
@@ -42,6 +61,7 @@ export default async function TicketPage({ params }: PageProps<'/tickets/[id]'>)
           <span className="font-mono text-sm text-content-subtle">#{ticket.reference}</span>
           <StatusBadge status={ticket.status} />
           <PriorityBadge priority={ticket.priority} />
+          <SlaBadge level={sla.level} hoursRemaining={sla.hoursRemaining} />
         </div>
         <h1 className="max-w-4xl text-xl font-semibold tracking-tight text-content sm:text-2xl">
           {ticket.title}
@@ -68,6 +88,10 @@ export default async function TicketPage({ params }: PageProps<'/tickets/[id]'>)
             initialComments={comments.map((comment) => ({
               ...comment,
               createdAt: comment.createdAt.toISOString(),
+            }))}
+            initialEvents={events.map((event) => ({
+              ...event,
+              createdAt: event.createdAt.toISOString(),
             }))}
           />
         </div>

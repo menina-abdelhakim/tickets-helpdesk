@@ -1,4 +1,5 @@
 import type { Priority, Status } from '@/generated/prisma/enums'
+import type { SlaLevel } from '@/lib/sla'
 
 export const STATUS_LABELS: Record<Status, string> = {
   OPEN: 'Ouvert',
@@ -65,4 +66,37 @@ export function PriorityBadge({ priority }: { priority: Priority }) {
   // Normal priority is the default and carries no information — don't shout it.
   if (priority === 'MEDIUM') return null
   return <span className={`${BASE} ${PRIORITY_STYLES[priority]}`}>{PRIORITY_LABELS[priority]}</span>
+}
+
+const SLA_STYLES: Record<Exclude<SlaLevel, 'none'>, string> = {
+  ok: 'text-[oklch(0.48_0.13_155)] bg-[oklch(0.95_0.05_155)]',
+  due: 'text-[oklch(0.48_0.13_75)] bg-[oklch(0.96_0.05_85)]',
+  breached: 'text-[oklch(0.52_0.2_20)] bg-[oklch(0.96_0.04_20)]',
+}
+
+function formatDelay(hours: number): string {
+  const abs = Math.abs(hours)
+  if (abs < 1) return `${Math.round(abs * 60)} min`
+  if (abs < 48) return `${Math.round(abs)} h`
+  return `${Math.round(abs / 24)} j`
+}
+
+/**
+ * Time left before support is expected to answer — or how long the target has
+ * been missed. Resolved and closed tickets show nothing: an SLA on finished
+ * work is noise.
+ */
+export function SlaBadge({ level, hoursRemaining }: { level: SlaLevel; hoursRemaining: number }) {
+  if (level === 'none') return null
+
+  const label =
+    level === 'breached'
+      ? `En retard de ${formatDelay(hoursRemaining)}`
+      : `Réponse attendue sous ${formatDelay(hoursRemaining)}`
+
+  return (
+    <span data-testid={`sla-${level}`} className={`${BASE} ${SLA_STYLES[level]}`}>
+      {label}
+    </span>
+  )
 }

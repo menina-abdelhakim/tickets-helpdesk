@@ -30,6 +30,15 @@ enum Priority {
   URGENT
 }
 
+/// What happened to a ticket. Comments live in their own table; this records
+/// the workflow changes that used to leave no trace at all.
+enum EventType {
+  CREATED
+  STATUS_CHANGED
+  ASSIGNED
+  UNASSIGNED
+}
+
 model User {
   id           String    @id @default(cuid())
   email        String    @unique
@@ -38,9 +47,11 @@ model User {
   role         Role      @default(USER)
   createdAt    DateTime  @default(now())
 
-  createdTickets  Ticket[]  @relation("TicketCreatedBy")
-  assignedTickets Ticket[]  @relation("TicketAssignedTo")
+  createdTickets  Ticket[]      @relation("TicketCreatedBy")
+  assignedTickets Ticket[]      @relation("TicketAssignedTo")
   comments        Comment[]
+  events          TicketEvent[] @relation("EventActor")
+  targetedByEvents TicketEvent[] @relation("EventTarget")
 }
 
 model Ticket {
@@ -60,10 +71,43 @@ model Ticket {
   assignedToId String?
 
   comments Comment[]
+  events   TicketEvent[]
+
+  /// Generated column maintained by Postgres — see the migration. Prisma cannot
+  /// express `GENERATED ALWAYS AS … STORED`, so it is declared as unsupported
+  /// to keep the schema and the database in sync.
+  searchVector Unsupported("tsvector")?
 
   // Dashboard counts group by status; the list page filters by assignee.
   @@index([status])
   @@index([assignedToId])
+  // Sorting the list by any column still has to start from a visible subset.
+  @@index([createdById])
+  @@index([priority])
+}
+
+/// An immutable audit entry. Written in the same transaction as the change it
+/// describes, so a ticket can never move without leaving a trace.
+model TicketEvent {
+  id        String    @id @default(cuid())
+  type      EventType
+  createdAt DateTime  @default(now())
+
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId String
+
+  actor   User   @relation("EventActor", fields: [actorId], references: [id], onDelete: Cascade)
+  actorId String
+
+  // Populated for STATUS_CHANGED.
+  fromStatus Status?
+  toStatus   Status?
+
+  // Populated for ASSIGNED / UNASSIGNED: who the ticket went to.
+  targetUser   User?   @relation("EventTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetUserId String?
+
+  @@index([ticketId, createdAt])
 }
 
 model Comment {

@@ -1,45 +1,94 @@
 import Link from 'next/link'
-import { PriorityBadge, StatusBadge } from '@/components/badges'
+import { PriorityBadge, SlaBadge, StatusBadge } from '@/components/badges'
 import { Avatar } from '@/components/ui'
 import { relativeTime } from '@/lib/format'
-import type { TicketListItem } from '@/lib/tickets'
+import { slaHoursRemaining, slaLevel } from '@/lib/sla'
+import type { SortDirection, SortField, TicketListRow } from '@/lib/tickets'
 
 /**
  * Column template shared by the row and the list header, so the labels line up
  * with the values. Below `lg` it collapses to a two-part flex layout.
  */
-export const TICKET_COLUMNS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_6rem_7.5rem_11rem] lg:items-center lg:gap-4'
+const COLUMNS = 'lg:grid lg:grid-cols-[minmax(0,1fr)_6rem_7.5rem_11rem] lg:items-center lg:gap-4'
 
-export function TicketListHeader() {
+export function TicketListHeader({
+  sort,
+  dir,
+  hrefFor,
+}: {
+  sort: SortField
+  dir: SortDirection
+  /** Builds the URL that sorts by `field`, toggling direction when already active. */
+  hrefFor: (field: SortField) => string
+}) {
+  const column = (field: SortField, label: string) => {
+    const active = sort === field
+    return (
+      <Link
+        href={hrefFor(field)}
+        aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`inline-flex items-center gap-1 transition-colors hover:text-content ${
+          active ? 'text-content' : ''
+        }`}
+      >
+        {label}
+        <span aria-hidden="true" className={active ? 'opacity-100' : 'opacity-0'}>
+          {dir === 'asc' ? '↑' : '↓'}
+        </span>
+      </Link>
+    )
+  }
+
   return (
     <div
-      className={`hidden border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-content-subtle sm:px-5 ${TICKET_COLUMNS}`}
+      className={`hidden border-b border-border px-4 py-2.5 text-xs font-medium uppercase tracking-wider text-content-subtle sm:px-5 ${COLUMNS}`}
     >
-      <span>Ticket</span>
-      <span>Priorité</span>
-      <span>Statut</span>
+      {column('activity', 'Ticket')}
+      {column('priority', 'Priorité')}
+      {column('status', 'Statut')}
       <span>Assigné à</span>
     </div>
   )
 }
 
 /** Shared by the dashboard and the ticket list so both stay identical. */
-export function TicketRow({ ticket }: { ticket: TicketListItem }) {
+export function TicketRow({ ticket }: { ticket: TicketListRow }) {
+  const sla = {
+    level: slaLevel({
+      priority: ticket.priority,
+      status: ticket.status,
+      createdAt: ticket.createdAt,
+      lastStaffReplyAt: ticket.lastStaffReplyAt,
+    }),
+    hoursRemaining: slaHoursRemaining({
+      priority: ticket.priority,
+      createdAt: ticket.createdAt,
+      lastStaffReplyAt: ticket.lastStaffReplyAt,
+    }),
+  }
+
   return (
     <li>
       <Link
         href={`/tickets/${ticket.id}`}
-        className={`flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-surface-hover sm:px-5 ${TICKET_COLUMNS}`}
+        className={`flex items-center gap-4 px-4 py-3.5 transition-colors hover:bg-surface-hover sm:px-5 ${COLUMNS}`}
       >
         <div className="min-w-0 flex-1 space-y-1">
           <p className="flex items-baseline gap-2 truncate text-sm font-medium text-content">
             <span className="font-mono text-xs text-content-subtle">#{ticket.reference}</span>
             {ticket.title}
           </p>
-          <p className="truncate text-xs text-content-subtle">
-            {ticket.createdBy.name} · {relativeTime(ticket.updatedAt)}
-            {ticket._count.comments > 0 && (
-              <> · {ticket._count.comments} message{ticket._count.comments > 1 ? 's' : ''}</>
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 truncate text-xs text-content-subtle">
+            <span>
+              {ticket.createdBy.name} · {relativeTime(ticket.updatedAt)}
+              {ticket._count.comments > 0 && (
+                <> · {ticket._count.comments} message{ticket._count.comments > 1 ? 's' : ''}</>
+              )}
+            </span>
+            {/* Only surfaced when it needs attention — a green "on time" badge on
+                every row would be noise. */}
+            {sla.level !== 'ok' && (
+              <SlaBadge level={sla.level} hoursRemaining={sla.hoursRemaining} />
             )}
           </p>
         </div>

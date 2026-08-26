@@ -16,7 +16,13 @@ export default defineConfig({
        * inflate the number with lines that only Playwright can meaningfully
        * exercise, and a coverage figure you cannot defend is worse than none.
        */
-      include: ['src/lib/permissions.ts', 'src/lib/format.ts'],
+      include: [
+        'src/lib/permissions.ts',
+        'src/lib/format.ts',
+        'src/lib/sla.ts',
+        'src/lib/rate-limit.ts',
+        'src/components/event-line.tsx',
+      ],
       thresholds: { lines: 90, functions: 90, branches: 85, statements: 90 },
     },
   },
