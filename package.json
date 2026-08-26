@@ -20,8 +20,8 @@
     "vercel-build": "prisma generate && prisma migrate deploy && next build",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "db:seed:prod": "tsx --env-file=.env.production.local prisma/seed.ts",
-    "db:clear:prod": "tsx --env-file=.env.production.local prisma/clear.ts"
+    "db:seed:prod": "tsx --env-file=.env.production.local prisma/assert-remote.ts && tsx --env-file=.env.production.local prisma/seed.ts",
+    "db:clear:prod": "tsx --env-file=.env.production.local prisma/assert-remote.ts && tsx --env-file=.env.production.local prisma/clear.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "7.10.0",
